@@ -10,7 +10,7 @@ os.system(f"mkdir tmp ; clear")
 # raw_stem = "data_v1/task1-SR/Raw data"
 raw_stem = "data_v1/task1-SR/Preprocessed"
 
-file_paths = [file_path for file_path in find_files(raw_stem) if '_EEG.mat' in file_path and "ZGW" not in file_path]
+file_paths = [file_path for file_path in find_files(raw_stem) if '_EEG.mat' in file_path ]
 file_paths = sorted(file_paths)
 
 debug = False
