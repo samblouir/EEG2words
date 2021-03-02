@@ -1,3 +1,7 @@
 venv/
 .idea/
 data_v1/
+tmp/
+tmp2/
+push.sh
+*.pyc

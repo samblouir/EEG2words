@@ -1,8 +1,12 @@
 from collections import Iterable
+
+import h5py
 import numpy as np
-import os, scipy.io
+import os, scipy.io, json
 
 from typing import List
+
+from data_transformations import normalize_2D_array_inplace, standardize_2D_array_inplace, map_2D_array
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
@@ -10,50 +14,108 @@ import tensorflow_addons as tfa
 import tensorflow_probability as tfp
 
 
-# code from my github
-# channels 3, 4, 5, 6, 13, and 14
-def load_mat(in_path: str, standardize: bool = False, channel_indices=None, window_size: int = 3) -> np.ndarray:
-    if channel_indices is None:
-        channel_indices = [3, 4, 5, 6, 13, 14]
+def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(-1, 1), channels=[-1], use_cached=True, debug_print=False) -> np.ndarray:
+    restricted_chars = "/!@#$%^&*()=+[]{}\'\";:,.<>`~ "
 
-    loaded_mat = scipy.io.loadmat(in_path)
+    channel_str = '-'.join([str(cnl) for cnl in channels])
+    suffix = f"{in_path}_std-{standardize}_nml-{normalize}_nml-R-{normalize_range}_cnls-{channel_str}"
+    for char in restricted_chars:
+        suffix = suffix.replace(char, '')
+    file_type = in_path.rsplit('.', 1)[-1]
+    processed_path = f"tmp/{suffix}.{file_type}.npy"
 
-    # path = in_path.rsplit('/', 1)[1]  # /user/home/.../v10p.mat -> v10p.mat
-    # path = path.split('.')[0]  # v10p.mat -> v10p
+    # if the file exists, just load and return it
+    if os.path.exists(processed_path) and use_cached:
+        mat = np.load(f"{processed_path}")
+        return mat
+    else:
 
-    tag = list(loaded_mat)[-1]
-    loaded_mat = loaded_mat[tag]
-
-    for i0, each in enumerate(loaded_mat):
-        for i1, each2 in enumerate(each):
-            for i2, more in enumerate(each2):
-
-                print(f"\tloaded_mat[{i0:2d}][{i1:2d}][{i2:2d}] size == \t {np.product(more.shape)} ")
-                # print(f"\tloaded_mat[{i0:2d}][{i1:2d}][{i2:2d}] size == \t {more} ")
-
-    loaded_mat = np.array(loaded_mat[0][0][15])
-
-    # loaded_mat = list(loaded_mat)
-    # loaded_mat = np.array(loaded_mat)[:-(len(loaded_mat)%window_size)]
-    # loaded_mat = np.array(loaded_mat)
-    # loaded_mat = loaded_mat[:6]
-    # loaded_mat = loaded_mat[:12]
-    # loaded_mat = loaded_mat[:9285]
-
-    # print(*loaded_mat,sep='\n')
-    exit()
-
-    if standardize:
-        return_list = standardize_data(return_list)
-
-    return_list = np.array(return_list)
-    return return_list
+        # Prints out that we are working on a new file
+        print(f"One-time processing {processed_path}...")
+        # if we need to create the file, save it at the end
+        try:
+            # loaded_mat = scipy.io.loadmat(in_path)
+            # Find the data's name of the Matlab dictionary,
+            # assuming it's the last key...
+            # tag = list(loaded_mat)[-1]
+            # mat = np.array(loaded_mat[tag])
+            mat = np.array(h5py.File(in_path)['EEG']['data'])
+            mat=np.squeeze(mat)
 
 
-def standardize_data(input_iterable: Iterable) -> np.ndarray:
-    return_list = input_iterable - np.mean(input_iterable)
-    return_list /= np.std(return_list)
-    return np.array(return_list)
+        except Exception as e:
+            print(f"Exception! Could not loadmat {in_path}. e: {e}")
+            return None
+            # mat = [-1 for _ in range(len(channels))]
+
+        # Tries to recursively find the electrode readings by finding the deepest and largest subarray
+        # while True:
+        #     try:
+        #         mat = max(mat, key=len)
+        #         if len(mat.shape) > 1:
+        #             break
+        #     except:
+        #         break
+
+        # Filter to our desired channels
+        # if channels is None or -1 in channels:
+        #     channels = [range(len(mat))]
+        mat = mat[tuple(channels)]
+        print(mat.shape)
+        print("HIYA")
+        print(mat)
+        return None
+        # mat = mat[tuple(channels)]
+
+        # Standardize each channel independently
+        if standardize:
+            standardize_2D_array_inplace(mat)
+
+        # Normalize each channel independently
+        if normalize:
+            map_2D_array(mat, out_min=normalize_range[0], out_max=normalize_range[1])
+
+        # Transposes mat
+        mat = [list(a) for a in zip(*mat)]
+
+        # Print out results
+        if debug_print:
+            name = in_path.split("/")[-1]
+            for index, reading in enumerate(mat):
+                reading = list(reading)
+                print(f"({name}) #{index} == ", end='\t')
+                for each in reading:
+                    print(f"{each:0.4f}", end='\t')
+                print()
+
+        mat = np.array(mat)
+        # Saves the processed file on the disk
+        f = open(processed_path, 'w')
+        try:
+            np.save(file=processed_path, arr=mat, )
+        except Exception as e:
+            print(f"Exception!: Failed to save {processed_path}. e: {e}")
+            os.remove(processed_path)
+
+        return mat
+
+
+# Recursively grab all files from the input path
+def find_files(in_path):
+    files = []
+
+    for file in os.listdir(in_path):
+        new_path = f"{in_path}/{file}"
+
+        if not os.path.isdir(new_path):
+            files.append(new_path)
+
+        else:
+            contents = find_files(new_path)
+            for each in contents:
+                files.append(each)
+
+    return files
 
 
 class ActivationLayerFactory():
