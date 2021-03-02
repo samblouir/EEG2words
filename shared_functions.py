@@ -58,14 +58,9 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
         #         break
 
         # Filter to our desired channels
-        # if channels is None or -1 in channels:
-        #     channels = [range(len(mat))]
-        mat = mat[tuple(channels)]
-        print(mat.shape)
-        print("HIYA")
-        print(mat)
-        return None
-        # mat = mat[tuple(channels)]
+        if channels is None or -1 in channels:
+            channels = [range(len(mat))]
+        mat = mat[channels]
 
         # Standardize each channel independently
         if standardize:
