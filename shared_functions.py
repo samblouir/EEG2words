@@ -30,7 +30,7 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
         # if we need to create the file, save it at the end
         try:
 
-            # Runs on raw files
+            # Runs on raw data files
             # loaded_mat = scipy.io.loadmat(in_path)
             # Find the data's name of the Matlab dictionary,
             # assuming it's the last key...
@@ -47,7 +47,7 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
             mat = np.array([-1 for _ in range(len(channels))])
             return mat
 
-        # for non-raw files
+        # Runs on raw data files
         # Tries to recursively find the electrode readings by finding the deepest and largest subarray
         # while True:
         #     try:
@@ -56,6 +56,9 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
         #             break
         #     except:
         #         break
+
+        # Transposes mat
+        mat = np.array([np.array(a) for a in zip(*mat)])
 
         # Filter to our desired channels
         if channels is None or -1 in channels:
@@ -70,9 +73,6 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
         if normalize:
             map_2D_array(mat, out_min=normalize_range[0], out_max=normalize_range[1])
 
-        # Transposes mat
-        mat = [list(a) for a in zip(*mat)]
-
         # Print out results
         if debug_print:
             name = in_path.split("/")[-1]
@@ -85,14 +85,13 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
 
         mat = np.array(mat)
 
-        if use_cached:
-            # Saves the processed file on the disk
-            f = open(processed_path, 'w')
-            try:
-                np.save(file=processed_path, arr=mat, )
-            except Exception as e:
-                print(f"Exception!: Failed to save {processed_path}. e: {e}")
-                os.remove(processed_path)
+        # Saves the processed file on the disk
+        f = open(processed_path, 'w')
+        try:
+            np.save(file=processed_path, arr=mat, )
+        except Exception as e:
+            print(f"Exception!: Failed to save {processed_path}. e: {e}")
+            os.remove(processed_path)
 
         return mat
 
