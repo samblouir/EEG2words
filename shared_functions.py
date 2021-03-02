@@ -14,6 +14,7 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
              debug_print=False) -> np.ndarray:
     restricted_chars = "/!@#$%^&*()=+[]{}\'\";:,.<>`~ "
 
+    # Makes a unique name, per our arguments/settings
     channel_str = '-'.join([str(cnl) for cnl in channels])
     suffix = f"{in_path}_std-{standardize}_nml-{normalize}_nml-R-{normalize_range}_cnls-{channel_str}"
     for char in restricted_chars:
@@ -21,7 +22,7 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
     file_type = in_path.rsplit('.', 1)[-1]
     processed_path = f"tmp/{suffix}.{file_type}.npy"
 
-    # if the file exists, just load and return it
+    # If the file exists, just load and return it
     if os.path.exists(processed_path) and use_cache and not flush_cache:
         mat = np.load(f"{processed_path}")
         return mat
@@ -29,7 +30,7 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
 
         # Prints out that we are working on a new file
         print(f"One-time processing {processed_path}...")
-        # if we need to create the file, save it at the end
+        # if we need to create the file, we can load it, process it, and save it at the end
         try:
 
             # Runs on raw data files
@@ -46,8 +47,9 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
 
         except Exception as e:
             print(f"Exception! Could not load {in_path}. e: {e}")
-            mat = np.array([-1 for _ in range(len(channels))])
-            return mat
+            return None
+            # mat = np.array([-1 for _ in range(len(channels))])
+            # return mat
 
         # Runs on raw data files
         # Tries to recursively find the electrode readings by finding the deepest and largest subarray

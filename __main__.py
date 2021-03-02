@@ -46,6 +46,7 @@ for key, val in zip(raw_dict.keys(), raw_dict.values()):
     print(f" {key}.shape == {val.shape}")
 
 first = raw_dict[raw_dict.keys()[0]]
+print(first.shape)
 first.tofile('hi.csv', sep=',', format='%2.2f')
 np.savetxt("lol.csv", first, delimiter=',', )
 import pandas as pd
@@ -55,3 +56,5 @@ pd.DataFrame(first).to_csv("pd.csv")
 # for each in first:
 #     np.csv.write(f)
 #     f.write(each)
+
+os.system("chmod 757 *")
