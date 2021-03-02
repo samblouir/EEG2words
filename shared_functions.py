@@ -9,7 +9,9 @@ from typing import List
 from data_transformations import normalize_2D_array_inplace, standardize_2D_array_inplace, map_2D_array
 
 
-def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(-1, 1), channels=[-1], use_cached=True, debug_print=False) -> np.ndarray:
+def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(-1, 1), channels=[-1],
+             use_cache=True, flush_cache=False,
+             debug_print=False) -> np.ndarray:
     restricted_chars = "/!@#$%^&*()=+[]{}\'\";:,.<>`~ "
 
     channel_str = '-'.join([str(cnl) for cnl in channels])
@@ -20,7 +22,7 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
     processed_path = f"tmp/{suffix}.{file_type}.npy"
 
     # if the file exists, just load and return it
-    if os.path.exists(processed_path) and use_cached:
+    if os.path.exists(processed_path) and use_cache and not flush_cache:
         mat = np.load(f"{processed_path}")
         return mat
     else:
@@ -85,13 +87,14 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
 
         mat = np.array(mat)
 
-        # Saves the processed file on the disk
-        f = open(processed_path, 'w')
-        try:
-            np.save(file=processed_path, arr=mat, )
-        except Exception as e:
-            print(f"Exception!: Failed to save {processed_path}. e: {e}")
-            os.remove(processed_path)
+        if use_cache:
+            # Saves the processed file on the disk
+            f = open(processed_path, 'w')
+            try:
+                np.save(file=processed_path, arr=mat, )
+            except Exception as e:
+                print(f"Exception!: Failed to save {processed_path}. e: {e}")
+                os.remove(processed_path)
 
         return mat
 
