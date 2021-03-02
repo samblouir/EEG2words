@@ -24,7 +24,8 @@ def load_file(index, in_file_paths, in_dict):
     file_path = in_file_paths[index]
     file_name = file_path.split('/')[-1]
     in_dict[file_name] = load_mat(file_path, standardize=True, normalize=True, normalize_range=(-1, 1), channels=[3, 4, 13], use_cached=False, debug_print=False)
-    # in_dict[file_name] = load_mat(file_path, standardize=True, normalize=True, normalize_range=(-1, 1), channels=[range(1)], use_cached=False, debug_print=False)
+    # in_dict[file_name] = load_mat(file_path, standardize=True, normalize=True, normalize_range=(-1, 1), channels=[range(1)], use_cached=False,
+    # debug_print=False)
 
 
 raw_dict = mp.Manager().dict()
