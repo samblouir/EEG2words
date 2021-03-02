@@ -45,7 +45,7 @@ def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(
 
 
         except Exception as e:
-            print(f"Exception! Could not loadmat {in_path}. e: {e}")
+            print(f"Exception! Could not load {in_path}. e: {e}")
             mat = np.array([-1 for _ in range(len(channels))])
             return mat
 
