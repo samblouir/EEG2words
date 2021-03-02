@@ -3,5 +3,6 @@ venv/
 data_v1/
 tmp/
 tmp2/
+__pycache__/
 push.sh
 *.pyc
