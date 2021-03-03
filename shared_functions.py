@@ -1,180 +1,190 @@
-from collections import Iterable
-
-import h5py
-import numpy as np
-import os, scipy.io, json
-
+import multiprocessing as mp
+import os
+from itertools import repeat
 from typing import List
 
-from data_transformations import normalize_2D_array_inplace, standardize_2D_array_inplace, map_2D_array
+import h5py, scipy.io
+import numpy as np
+import json
 
-restricted_chars = "/!@#$%^&*()=+[]{}\'\";:,.<>`~ "
-
-
-# Recursively grab keys/values from an HDF5 file
-# def find_keys(in_file_ptr: List[h5py]):
-def find_keys(in_dict, stacked_name=''):
-    files = []
-    ctr = 0
-
-    # listed_dict = list(zip(in_dict.keys(), in_dict.values()))
-    # listed_dict = in_dict
-    listed_dict=in_dict
-    # arr = np.array(listed_dict)
-    # dimensionality=len(arr.shape)
-    # print(arr.shape)
+# Where to recursively search for our files
+# raw_stem = "data_v1/task1-SR/Raw data"
+raw_stem = "data_v2/task1-NR/Preprocessed/YAC"
 
 
-    for curr_key, curr_val in zip(listed_dict.keys(), listed_dict.values()):
-        end_dim = len(np.array(curr_val).shape)
-        if end_dim == 1:
-            # print(type(curr_val))
-            if type(curr_val) != h5py.Dataset:
-                pass
-                # end = curr_val.keys()
-                # end=list(end)[0:2]
-                # print(f"curr_key/curr_val/end == {curr_key:>20} \t {curr_val} \t {end}")
-                for each in find_keys(curr_val,f"{stacked_name}/{curr_key}"):
-                    files.append(each)
-            else:
-                # curr_val=listed_dict[curr_key][curr_val]
-                curr_val=np.array(curr_val)
-                # print(f"Appending {curr_val}")
-                ok = curr_key
-                ok = f"{stacked_name}/{curr_key}"
-                files.append((ok,curr_val))
-                # print(f"curr_val == {curr_val}")
-                # print(f"files == {files}")
+# Initialize expected directories
+def init():
+    if not os.path.exists("processed"):
+        os.system("mkdir processed")
+    if not os.path.exists("et_processed"):
+        os.system("mkdir et_processed")
+    os.system("clear")
 
 
-    return files
+# Prints a dictionary
+def print_dict(in_dict: dict):
+    for key, value in zip(in_dict.keys(), in_dict.values()):
+        print("*" * 40)
+        print(f"{key} == \n {value} \n ")
 
 
-def convert_file(in_path: str, standardize=False, normalize=False, normalize_range=(-1, 1), channels=[-1],
-                 use_cache=True, flush_cache=False,
-                 debug_print=False):
-    # Makes a unique name, per our arguments/settings
-    channel_str = '-'.join([str(cnl) for cnl in channels])
-    suffix = f"{in_path}_std-{standardize}_nml-{normalize}_nml-R-{normalize_range}_cnls-{channel_str}"
-    for char in restricted_chars:
-        suffix = suffix.replace(char, '')
-    file_type = in_path.rsplit('.', 1)[-1]
-
-    processed_path = f"converted/{suffix}.{file_type}.npy"
-    # os.system("mkdir converted")
-
-    # Runs on non-raw files
-    open_file = h5py.File(in_path)
-    # keys = find_keys([open_file])
-    # keys = list(open_file.keys())
-    # vals = find_keys(open_file)
-    # open_file = list(zip(open_file.keys(), open_file.values()))
-    vals = find_keys(open_file)
-    vals = list(vals)
-    # vals=np.array(vals)
-    # print(f"open_file == {open_file}")
-    # print(f"keys == {keys}")
-    # print("\n\n\n")
-    # print(f"convert_file(): vals == {vals}")
-    # print("\n\n\n")
-
-    # mat = np.array(open_file['EEG']['data'])
-    # mat = np.squeeze(mat)
-
-    return vals
+# Gets the file path to the cached file
+def get_cached_file_path(file_name: str, channel_indices=None, prefix="processed") -> str:
+    if channel_indices is None:  # Avoids mutable object as default argument
+        channel_indices = [0]
+    return f"{prefix}/{file_name}-{'_'.join(map(lambda x: str(x), channel_indices))}.csv.npy"
 
 
-def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(-1, 1), channels=[-1],
-             use_cache=True, flush_cache=False,
-             debug_print=False) -> np.ndarray:
-    # Makes a unique name, per our arguments/settings
-    channel_str = '-'.join([str(cnl) for cnl in channels])
-    suffix = f"{in_path}_std-{standardize}_nml-{normalize}_nml-R-{normalize_range}_cnls-{channel_str}"
-    for char in restricted_chars:
-        suffix = suffix.replace(char, '')
-    file_type = in_path.rsplit('.', 1)[-1]
-    processed_path = f"tmp/{suffix}.{file_type}.npy"
-
-    # If the file exists, just load and return it
-    if os.path.exists(processed_path) and use_cache and not flush_cache:
-        mat = np.load(f"{processed_path}")
-        return mat
-    else:
-
-        # Prints out that we are working on a new file
-        print(f"One-time processing {processed_path}...")
-        # if we need to create the file, we can load it, process it, and save it at the end
-        try:
-
-            # Runs on raw data files
-            # loaded_mat = scipy.io.loadmat(in_path)
-            # Find the data's name of the Matlab dictionary,
-            # assuming it's the last key...
-            # tag = list(loaded_mat)[-1]
-            # mat = np.array(loaded_mat[tag])
-
-            # Runs on non-raw files
-            mat = np.array(h5py.File(in_path)['EEG']['data'])
-            mat = np.squeeze(mat)
+# If the file does not exist or force_cache == True,
+# load in the file and save it to the cache
+def cache_file(file_to_cache: str, cache_path: str,
+               channel_indices: List[int], force_cache=False) -> None:
+    if not os.path.exists(cache_path) or force_cache:
+        file = h5py.File(file_to_cache, 'r')
+        file = file['EEG']['data']
+        new_arr = np.squeeze(file)
+        new_arr = np.transpose(new_arr)
+        new_arr = new_arr[channel_indices]
+        new_arr = np.array([np.array(a) for a in zip(*new_arr)])
+        output_file = cache_path.rsplit(".npy", 1)[0]
+        np.save(file=output_file, arr=new_arr)
+        if os.name == "posix":
+            os.system(f"chmod 757 {cache_path}")
 
 
-        except Exception as e:
-            print(f"Exception! Could not load {in_path}. e: {e}")
-            return None
-            # mat = np.array([-1 for _ in range(len(channels))])
-            # return mat
+# Opens and loads a file and ensures a cached version is created
+def cache_open(index, in_file_paths, in_dict, channel_indices) -> None:
+    # Calculate our file paths
+    file_path = in_file_paths[index]
+    file_name = file_path.split('/')[-1]
+    cached_file_path = get_cached_file_path(file_name, channel_indices)
 
-        # Runs on raw data files
-        # Tries to recursively find the electrode readings by finding the deepest and largest subarray
-        # while True:
-        #     try:
-        #         mat = max(mat, key=len)
-        #         if len(mat.shape) > 1:
-        #             break
-        #     except:
-        #         break
+    # Creates a relevant cache file, if it does not exist.
+    cache_file(file_to_cache=file_path, cache_path=cached_file_path,
+               channel_indices=channel_indices, force_cache=False, )
 
-        # Transposes mat
-        mat = np.array([np.array(a) for a in zip(*mat)])
+    # Load in from the relevant cache file
+    new_arr = np.load(cached_file_path, mmap_mode='r', allow_pickle=True)
 
-        # Filter to our desired channels
-        if channels is None or -1 in channels:
-            channels = [range(len(mat))]
-        mat = mat[channels]
+    # Filter to the relevant indices
+    # if channel_indices is not None:
+    #     new_arr = new_arr[channel_indices]
 
-        # Standardize each channel independently
-        if standardize:
-            standardize_2D_array_inplace(mat)
+    # Store it in the multiprocessing dictionary
+    in_dict[file_name] = new_arr
 
-        # Normalize each channel independently
-        if normalize:
-            map_2D_array(mat, out_min=normalize_range[0], out_max=normalize_range[1])
-
-        # Print out results
-        if debug_print:
-            name = in_path.split("/")[-1]
-            for index, reading in enumerate(mat):
-                reading = list(reading)
-                print(f"({name}) #{index} == ", end='\t')
-                for each in reading:
-                    print(f"{each:0.4f}", end='\t')
-                print()
-
-        mat = np.array(mat)
-
-        if use_cache:
-            # Saves the processed file on the disk
-            f = open(processed_path, 'w')
-            try:
-                np.save(file=processed_path, arr=mat, )
-            except Exception as e:
-                print(f"Exception!: Failed to save {processed_path}. e: {e}")
-                os.remove(processed_path)
-
-        return mat
+    print(f'Opened {file_name}!')
 
 
-# Recursively grab all files from the input path
+# Caches and loads EEG data into an mp.dict() using multiprocessing (mat version 7.3)
+def load_eeg_data(channel_indices=None) -> dict:
+    # Find all _EEG.mat files
+    file_paths = [file_path for file_path in find_files(raw_stem) if '_EEG.mat' in file_path]
+    # Create an mp dict
+    out_dict = mp.Manager().dict()
+
+    # Use mp.Pool on cache_open()
+    args = zip(
+        range(len(file_paths)), repeat(list(file_paths)),
+        repeat(out_dict), repeat(channel_indices), )
+    mp.Pool(mp.cpu_count()).starmap(cache_open, args)
+
+    # Return the EEG data as a dict
+    return out_dict
+
+
+# Caches and loads EEG data into an mp.dict() using multiprocessing (mat version <7.3)
+def cache_open_et(index, file_paths, in_dict):
+    file_path = file_paths[index]
+    file_name = file_path.split('/')[-1]
+    file = scipy.io.loadmat(file_path)
+    cached_file_path = get_cached_file_path(file_name, prefix="et_processed")
+
+    renew_cache = False
+    try:
+        with open(cached_file_path, 'r') as fin:
+            temp_dict = json.load(fin)
+        in_dict[file_name] = temp_dict
+    except:
+        renew_cache = True
+
+    if not os.path.exists(cached_file_path) or renew_cache:
+        #  The list of six relevant keys
+        #  ['raw_comments', 'colheader', 'data', 'messages', 'eyeevent', 'event']
+        keys = list(file.keys())[-6:]
+
+        #  Loads our six relevant values
+        raw_comments = file[keys[0]]
+        colheader = file[keys[1]]
+        data = file[keys[2]]
+        messages = file[keys[3]]
+        eyeevent = file[keys[4]]
+        event = file[keys[5]]
+
+        #  Prepare all key and values
+        temp_dict = {}
+        temp_dict['raw_comments'] = process_text_array(raw_comments)
+        temp_dict['colheader'] = process_text_array(colheader)
+        temp_dict['data'] = data
+        temp_dict['messages'] = process_text_array(messages)
+        temp_dict['eyeevent'] = np.squeeze(eyeevent)
+        temp_dict['event'] = event
+
+        #  https://stackoverflow.com/questions/26646362/numpy-array-is-not-json-serializable
+        def default(obj):
+            if type(obj).__module__ == np.__name__:
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                else:
+                    return obj.item()
+            raise TypeError('Unknown type:', type(obj))
+
+        #  json-serializes and writes to cached_file_path
+        with open(cached_file_path, 'w') as fout:
+            print(json.dumps(data, default=default), file=fout)
+
+        #  Linux check for proper permissions
+        if os.name == "posix":
+            os.system(f"chmod 757 {cached_file_path}")
+
+        #  Makes our dict's file_name value point to our dict
+        in_dict[file_name] = temp_dict
+
+    #  A little victory message
+    print(f'Opened {file_name}!')
+
+
+# Caches and loads ET data into an mp.dict() using multiprocessing (mat v7.3)
+def load_et_data() -> dict:
+    # Find all _ET.mat files
+    file_paths = [file_path for file_path in find_files(raw_stem) if '_ET.mat' in file_path]
+    # Create an mp dict
+    out_dict = mp.Manager().dict()
+
+    # Use mp.Pool on cache_open()
+    args = zip(
+        range(len(file_paths)), repeat(list(file_paths)),
+        repeat(out_dict), )
+    mp.Pool(mp.cpu_count()).starmap(cache_open_et, args)
+
+    # Return the EEG data as a dict
+    return out_dict
+
+
+# Combines and returns as a string a joining of arrays of arrays of strings
+def process_text_array(input_raw_comments, sep='\n'):
+    # Assemble all comment lines into a list
+    comments_list = []
+    for raw_line in input_raw_comments:
+        for line in raw_line:
+            line = str(np.squeeze(line)).strip()
+            comments_list.append(line)
+
+    # Join the list, each line separated by sep
+    return sep.join(comments_list)
+
+
+# Recursively grab all files from the input_raw_comments path
 def find_files(in_path):
     files = []
 

@@ -1,10 +1,14 @@
 venv/
 .idea/
 data_v1/
+data_v2/
 tmp/
 tmp2/
+processed/
+et_processed/
 __pycache__/
 push.sh
 *.pyc
 *.csv
 *.mat
+*.txt
