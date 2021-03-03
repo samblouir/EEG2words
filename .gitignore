@@ -6,3 +6,5 @@ tmp2/
 __pycache__/
 push.sh
 *.pyc
+*.csv
+*.mat

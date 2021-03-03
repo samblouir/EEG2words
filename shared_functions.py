@@ -8,12 +8,85 @@ from typing import List
 
 from data_transformations import normalize_2D_array_inplace, standardize_2D_array_inplace, map_2D_array
 
+restricted_chars = "/!@#$%^&*()=+[]{}\'\";:,.<>`~ "
+
+
+# Recursively grab keys/values from an HDF5 file
+# def find_keys(in_file_ptr: List[h5py]):
+def find_keys(in_dict, stacked_name=''):
+    files = []
+    ctr = 0
+
+    # listed_dict = list(zip(in_dict.keys(), in_dict.values()))
+    # listed_dict = in_dict
+    listed_dict=in_dict
+    # arr = np.array(listed_dict)
+    # dimensionality=len(arr.shape)
+    # print(arr.shape)
+
+
+    for curr_key, curr_val in zip(listed_dict.keys(), listed_dict.values()):
+        end_dim = len(np.array(curr_val).shape)
+        if end_dim == 1:
+            # print(type(curr_val))
+            if type(curr_val) != h5py.Dataset:
+                pass
+                # end = curr_val.keys()
+                # end=list(end)[0:2]
+                # print(f"curr_key/curr_val/end == {curr_key:>20} \t {curr_val} \t {end}")
+                for each in find_keys(curr_val,f"{stacked_name}/{curr_key}"):
+                    files.append(each)
+            else:
+                # curr_val=listed_dict[curr_key][curr_val]
+                curr_val=np.array(curr_val)
+                # print(f"Appending {curr_val}")
+                ok = curr_key
+                ok = f"{stacked_name}/{curr_key}"
+                files.append((ok,curr_val))
+                # print(f"curr_val == {curr_val}")
+                # print(f"files == {files}")
+
+
+    return files
+
+
+def convert_file(in_path: str, standardize=False, normalize=False, normalize_range=(-1, 1), channels=[-1],
+                 use_cache=True, flush_cache=False,
+                 debug_print=False):
+    # Makes a unique name, per our arguments/settings
+    channel_str = '-'.join([str(cnl) for cnl in channels])
+    suffix = f"{in_path}_std-{standardize}_nml-{normalize}_nml-R-{normalize_range}_cnls-{channel_str}"
+    for char in restricted_chars:
+        suffix = suffix.replace(char, '')
+    file_type = in_path.rsplit('.', 1)[-1]
+
+    processed_path = f"converted/{suffix}.{file_type}.npy"
+    # os.system("mkdir converted")
+
+    # Runs on non-raw files
+    open_file = h5py.File(in_path)
+    # keys = find_keys([open_file])
+    # keys = list(open_file.keys())
+    # vals = find_keys(open_file)
+    # open_file = list(zip(open_file.keys(), open_file.values()))
+    vals = find_keys(open_file)
+    vals = list(vals)
+    # vals=np.array(vals)
+    # print(f"open_file == {open_file}")
+    # print(f"keys == {keys}")
+    # print("\n\n\n")
+    # print(f"convert_file(): vals == {vals}")
+    # print("\n\n\n")
+
+    # mat = np.array(open_file['EEG']['data'])
+    # mat = np.squeeze(mat)
+
+    return vals
+
 
 def load_mat(in_path: str, standardize=False, normalize=False, normalize_range=(-1, 1), channels=[-1],
              use_cache=True, flush_cache=False,
              debug_print=False) -> np.ndarray:
-    restricted_chars = "/!@#$%^&*()=+[]{}\'\";:,.<>`~ "
-
     # Makes a unique name, per our arguments/settings
     channel_str = '-'.join([str(cnl) for cnl in channels])
     suffix = f"{in_path}_std-{standardize}_nml-{normalize}_nml-R-{normalize_range}_cnls-{channel_str}"
