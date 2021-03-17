@@ -1,14 +1,17 @@
 import multiprocessing as mp
 import os
+import time
 from itertools import repeat
 from typing import List
-
+import fasttext
+import fasttext.util
 import h5py, scipy.io
 import numpy as np
 import json
 
 # Where to recursively search for our files
 # raw_stem = "data_v1/task1-SR/Raw data"
+# raw_stem = "data_v2/task1-NR/Preprocessed"
 raw_stem = "data_v2/task1-NR/Preprocessed/YAC"
 
 
@@ -73,7 +76,8 @@ def cache_open(index, in_file_paths, in_dict, channel_indices) -> None:
     # Store it in the multiprocessing dictionary
     in_dict[file_name] = new_arr
 
-    print(f'Opened {file_name}!')
+    # A little victory message
+    # print(f'Opened {file_name}!')
 
 
 # Caches and loads EEG data into an mp.dict() using multiprocessing (mat version 7.3)
@@ -101,12 +105,13 @@ def cache_open_et(index, file_paths, in_dict):
     cached_file_path = get_cached_file_path(file_name, prefix="et_processed")
 
     renew_cache = False
-    try:
-        with open(cached_file_path, 'r') as fin:
-            temp_dict = json.load(fin)
-        in_dict[file_name] = temp_dict
-    except:
-        renew_cache = True
+    renew_cache = True
+    # try:
+    #     with open(cached_file_path, 'r') as fin:
+    #         temp_dict = json.load(fin)
+    #     in_dict[file_name] = temp_dict
+    # except:
+    #     renew_cache = True
 
     if not os.path.exists(cached_file_path) or renew_cache:
         #  The list of six relevant keys
@@ -122,26 +127,55 @@ def cache_open_et(index, file_paths, in_dict):
         event = file[keys[5]]
 
         #  Prepare all key and values
+        raw_comments = process_text_array(raw_comments)
+        colheader = process_text_array(colheader)
+        data = data
+        messages = process_text_array(messages)
+        eyeevent = np.squeeze(eyeevent)
+
+        #  Prepare all key and values
         temp_dict = {}
-        temp_dict['raw_comments'] = process_text_array(raw_comments)
-        temp_dict['colheader'] = process_text_array(colheader)
+        temp_dict['raw_comments'] = raw_comments
+        temp_dict['colheader'] = colheader
         temp_dict['data'] = data
-        temp_dict['messages'] = process_text_array(messages)
-        temp_dict['eyeevent'] = np.squeeze(eyeevent)
+        temp_dict['messages'] = messages
+        temp_dict['eyeevent'] = eyeevent
         temp_dict['event'] = event
 
+        #   SAMPLES	GAZE	LEFT	HTARGET	RATE	 500.00	TRACKING	CR	FILTER	2
+        msg = messages.splitlines()
+        msgs = []
+        ESACC_reached = False
+        for line in msg:
+            # t0 = line.replace("\t",'')
+            t0 = line.split()
+
+            if not ESACC_reached and "ESACC" in line:
+                ESACC_reached = True
+
+            if ESACC_reached and "ESACC" in line:
+                msgs.append(t0)
+
+        labels = data[:, -1]
+        data = data[:, :-1]
+        # msgs = [m.split('\t') for m in msg]
+        print(*msgs, sep='\n')
+
+        # for key in keys:
+        #     curr_data = temp_dict[key]
+
         #  https://stackoverflow.com/questions/26646362/numpy-array-is-not-json-serializable
-        def default(obj):
-            if type(obj).__module__ == np.__name__:
-                if isinstance(obj, np.ndarray):
-                    return obj.tolist()
-                else:
-                    return obj.item()
-            raise TypeError('Unknown type:', type(obj))
+        # def default(obj):
+        #     if type(obj).__module__ == np.__name__:
+        #         if isinstance(obj, np.ndarray):
+        #             return obj.tolist()
+        #         else:
+        #             return obj.item()
+        #     raise TypeError('Unknown type:', type(obj))
 
         #  json-serializes and writes to cached_file_path
-        with open(cached_file_path, 'w') as fout:
-            print(json.dumps(data, default=default), file=fout)
+        # with open(cached_file_path, 'w') as fout:
+        #     print(json.dumps(data, default=default), file=fout)
 
         #  Linux check for proper permissions
         if os.name == "posix":
@@ -151,7 +185,7 @@ def cache_open_et(index, file_paths, in_dict):
         in_dict[file_name] = temp_dict
 
     #  A little victory message
-    print(f'Opened {file_name}!')
+    # print(f'Opened {file_name}!')
 
 
 # Caches and loads ET data into an mp.dict() using multiprocessing (mat v7.3)
@@ -200,3 +234,50 @@ def find_files(in_path):
                 files.append(each)
 
     return files
+
+
+# Keeps track of time, easily.
+# Pass in a String for a pretty print. Returns total time elapsed in seconds.
+def timerD(name="Last job", silent=False, show_total_time_elapsed=False, start_timer=time.perf_counter(), return_difference=True, reset=False, end='\n'):
+    if "last_time" not in timerD.__dict__: timerD.last_time = start_timer
+    if reset or "counter" not in timerD.__dict__: timerD.counter = 0
+
+    new_time = time.perf_counter()
+    difference = new_time - timerD.last_time
+    timerD.last_time = new_time
+
+    if not silent:
+        if show_total_time_elapsed:
+            print(f"  {timerD.counter:3d}) {time.perf_counter() - start_timer:0.3f}s (total) \t {name} ", end=end)
+        else:
+            print(f"  {timerD.counter:3d}) {difference:0.3f}s \t\t {name} ", end=end)
+        timerD.counter += 1
+
+    if return_difference:
+        return difference
+    return time.perf_counter() - start_timer
+
+
+# Adapted from https://github.com/aneesh-joshi/LSTM_POS_Tagger/blob/master/make_model.py
+def prepare_embedding_layer(input_dim, embed_out_dim, word_list, load_embeddings=True, language='en'):
+    new_depth = embed_out_dim
+
+    fasttext.util.download_model(language)
+    curr_file = f'cc.{language}.300.bin'
+    desired_file = f"tmp/{curr_file[:5]}.{new_depth}.bin"
+    if not os.path.exists(desired_file):
+        ft = fasttext.load_model(f"data/{curr_file}")
+        fasttext.util.reduce_model(ft, embed_out_dim)
+        ft.save_model(desired_file)
+        timerD(f"Caching fasttext at {curr_file[4:6]}-{embed_out_dim} dimensions")
+    ft = fasttext.load_model(desired_file)
+    timerD(f"Loading fasttext-{embed_out_dim}")
+
+    embedding_weights = np.random.random((input_dim, embed_out_dim))
+
+    if load_embeddings:
+        for index, word in enumerate(word_list.keys()):
+            embedding_weights[index] = ft.get_word_vector(word)
+        timerD(f"Loading embedding_weights")
+
+    return embedding_weights
