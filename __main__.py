@@ -75,7 +75,7 @@ def mp_load_file_two_arrays2(glove_file, proc_count, N):
         vectors[index] = vector
         # vectors[index] = vector[:]
 
-    return np.squeeze(words), np.squeeze(vectors)
+    return words, np.squeeze(vectors)
 
 
 def slice_file(glove_file, index, N):
@@ -95,7 +95,7 @@ def prepare_arguments(*x):
     return zip(*args)
 
 
-def load_embeddings(n=50, glove_size=6):
+def load_embeddings(n=300, glove_size=6):
     new_folder = f"data/glove/{glove_size}B.{n}d"
     os.system(f"mkdir -p {new_folder}")
     vector_path = f"{new_folder}/glove.{glove_size}B.{n}d.vectors.npy"
@@ -125,7 +125,7 @@ def load_embeddings(n=50, glove_size=6):
 
     a = np.load(word_path, allow_pickle=True)
     b = np.load(vector_path, allow_pickle=True)
-    # Create a dict with pointers to b
+    # Create a dict with pointers to vector_list
     c = {str(a[idx]): b[idx] for idx in range(len(a))}
 
     word_array, vector_array, word_vector_dict = np.array(a), np.array(b), c
@@ -149,6 +149,11 @@ def mp_split(array, index):
     return array[index].split()
 
 
+# Splits and gets the last element in lower case
+def analogy_answer_splitter(array, index):
+    return array[index].split()[-1].lower()
+
+
 def mp_split_vectors(array, index, in_dict):
     each = array[index].split()
     return [in_dict[e] for e in each]
@@ -159,28 +164,22 @@ def get_vectors(array, in_dict):
 
 
 def get_index_vectors(array, index, in_dict):
-    # array = get_work_load(array)
-    # words = [w.lower() for w in array]
-    # return [in_dict[e] for e in words]
-
     return [in_dict[w.lower()] for w in array[index].split()]
 
 
+def score_if_same(array, array2, index):
+    return array[index] == array2[index]
+
+
 def get_analogy_vector(array, index, in_dict):
-    # words = [a.split() for a in array[index]]
     vectors = [in_dict[w.lower()] for w in array[index].split()]
     result = vectors[1] - vectors[0] + vectors[2]
-
-    # words = array[index].split()
-    # vectors = [in_dict[w.lower()] for w in words]
-    # result = vectors[1] - vectors[0] + vectors[2]
     return result
 
 
-class AnalogyLayer(Layer):
+class AnalogyIndiceLayer(Layer):
     def __init__(self):
-        super(AnalogyLayer, self).__init__()
-        self.counter = 0
+        super(AnalogyIndiceLayer, self).__init__()
 
     @tf.function(experimental_compile=True)
     def call(self, inputs, training=False):
@@ -189,58 +188,61 @@ class AnalogyLayer(Layer):
         x = tf.abs(x)
         x = tf.reduce_sum(x, axis=1)
         x = tf.argmin(x)  # Can be easily changed to grab the K-nearest
-        # print(self.counter, end='\r')
-        # self.counter += 1
         return x
 
 
-# @tf.function()
-# @tf.function(experimental_compile=True)
-counter = 0
-def do_it_all(curr=None, b=None):
-    global counter
-    inputs = tf.subtract(curr, b)
-    x = tf.subtract(curr, b)
-    x = tf.abs(x)
-    x = tf.reduce_sum(x, axis=1)
-    x = tf.argmin(x)
-    print(counter, end='\r')
-    counter += 1
-    return x
+def convert_to_tensors(curr, dtype=tf.float32):
+    return tf.convert_to_tensor(curr, dtype=dtype)
 
 
-def convert_to_tensors(curr):
-    return tf.convert_to_tensor(curr, dtype=tf.float64)
-
-
-def load_analogies(in_dict, b):
+def calculate_analogy_vectors(in_dict, vector_list, limit=None):
     analogy_path = get_file(URL="https://raw.githubusercontent.com/nicholas-leonard/word2vec/master/questions-words.txt")
     file_path = "data/float32_analogy_vectors.npy"
     # file_path = "data/float64_analogy_vectors.npy"
 
+    ###################################################################################################
+    ###################################################################################################
+
     if not os.path.exists(file_path):
-        file = open(analogy_path).readlines()[1:]
-        file = [line for line in file if len(line.split()) == 4]
-        timerD("Filtered line")
-        args = zip(repeat(file), range(len(file)), repeat(in_dict))
-        vectors = q_smp(get_index_vectors, args)
-        np.save(file_path, np.array(vectors, dtype=np.float64), allow_pickle=True)
+        file = [line for line in open(analogy_path).readlines() if len(line.split()) == 4]
+        vectors = q_smp(get_index_vectors, zip(repeat(file), range(len(file)), repeat(in_dict)))
+        np.save(file_path, np.array(vectors, dtype=np.float32), allow_pickle=True)
+
+    ###################################################################################################
+    ###################################################################################################
 
     vectors = np.load(file_path, allow_pickle=True)
-    hi: np.ndarray = vectors[:, 1] - vectors[:, 0] + vectors[:, 2]
-    currT, bT = q_mp(convert_to_tensors, hi), convert_to_tensors(b)
+    vectors = vectors[:limit]  # Limit the amount of vectors, for debugging
+    predicted_vectors: np.ndarray = vectors[:, 1] - vectors[:, 0] + vectors[:, 2]
+    currT, bT = q_mp(convert_to_tensors, predicted_vectors), convert_to_tensors(vector_list)
 
-    # Loop that finds all of the locations
+    timerD("Finding data")
+    tf_layer = AnalogyIndiceLayer()
+    locs = list(map(lambda x: tf_layer((x, bT)).numpy(), currT))
 
-    # Should be much more efficient, but is running slower ATM
-    # timerD("Finding data")
-    # data = [(each, bT) for each in currT]
-    # tf_layer = AnalogyLayer()
-    # locs = [tf_layer(d) for d in data]
-
-    locs = [do_it_all(each, bT) for each in currT]
     return locs
 
+
+def get_analogy_answers():
+    analogy_path = get_file(URL="https://raw.githubusercontent.com/nicholas-leonard/word2vec/master/questions-words.txt")
+    file_path = "data/analogy_answers.txt"
+
+    ###################################################################################################
+    ###################################################################################################
+
+    if not os.path.exists(file_path) or True:
+        file = [line for line in open(analogy_path).readlines() if len(line.split()) == 4]
+        analogy_answers = q_smp(analogy_answer_splitter, zip(repeat(file), range(len(file))))
+        with open(file_path, "w") as f:
+            for line in analogy_answers:
+                f.write(f"{line}\n")
+
+    ###################################################################################################
+    ###################################################################################################
+
+    analogy_answers = open(file_path).read().splitlines()
+
+    return analogy_answers
 
 
 if __name__ == '__main__':
@@ -249,74 +251,32 @@ if __name__ == '__main__':
 
     words = ["car", "automobile", "truck", "bus", "limo", "jeep", "boat", "canoe", "dinghy", "motorboat", "yacht", "catamaran"]
 
-    n = 300
-    # a, b, c = load_embeddings(n=n, glove_size=840)
-    a, b, c = load_embeddings(n=n, glove_size=6)
-    # print(*a.tolist(),sep='\n')
-    analogies = load_analogies(c, b)
+    n, glove_size = 300, 6
+    limit = None  # Reduces the amount of words done, for debugging. Set to None for the full dataset.
+    # limit = 5
 
-    time_taken = timerD(f"Math done!", return_difference=True)
-    print(f" Seconds per analogy: {time_taken / len(analogies)}")
-    print(f" Analogies per second: {len(analogies) / time_taken}")
-    # for each in analogies:
-    #     print(a[each])
-    # print(a[analogies])
-    exit()
-    # word_list, vector_list, word_vector_dict = a, b, c
-    timerD(f"load_embeddings({n}) complete")
+    word_list, vector_list, word_vector_dict = load_embeddings(n=n, glove_size=glove_size)
 
-    bT = tf.convert_to_tensor(b)
-    timerD("Loading b into a Tensor")
+    predicted_analogy_indices = calculate_analogy_vectors(word_vector_dict, vector_list, limit=limit)
+    timerD(f"Predicting analogy indices")
 
-    idx = 0
-    curr = bT[idx]
-    for each in bT:
-        x = tf.subtract(curr, each)
-        x = tf.abs(x)
-        x = tf.reduce_sum(x)
-        # print(x)
-        # exit()
-    timerD("Found each distance")
-    print(curr.shape)
-    q = tf.reshape(tf.repeat(curr, len(bT)), shape=(len(bT), len(curr)))
-    print(q.shape)
+    predicted_analogies = word_list[predicted_analogy_indices]
+    analogy_answers = get_analogy_answers()
+    timerD("Loading analogy answers")
 
-    x = tf.subtract(q, bT)
-    x = tf.abs(x)
-    x = tf.reduce_sum(x, axis=-1)
-    x = x.numpy().tolist()
-    x.sort()
-    distances = x[:5]
+    args = zip(repeat(predicted_analogies), repeat(analogy_answers), range(len(predicted_analogies)))
+    true_if_correct = q_smp(score_if_same, args)
+    number_correct = np.sum(true_if_correct)
+    percent_correct = f"{number_correct / len(predicted_analogies) * 100:2.1f}"
+    # timerD(f"Checking accuracy. Results (correct/total): {number_correct} / {len(predicted_analogies)} ({percent_correct}%)")
 
-    print(distances)
+    incorrect_predictions_path = f"data/wrong_predictions-{percent_correct}p.txt"
+    with open(incorrect_predictions_path, 'w') as f:
+        for a, b, c in zip(predicted_analogies, analogy_answers, true_if_correct):
+            if not c:
+                pretty = f"{a:>20} | {b:<20}"
+                f.write(f"{pretty}\n")
+                print(pretty)
 
-    # all = tf.expand_dims(list(embeddings_dict.curr()), 1)
-
-    # timerD("Entering do_it_all")
-    # do_it_all(embeddings_dict.items())
-    # timerD("Completed do_it_all")
-
-    # print(f"embeddings_dict = {embeddings_dict.keys()[keys]}")
-    # print()
-    # all = tf.expand_dims(list(embeddings_dict.curr()), 1)
-    # for k, v in word_dict.items():
-    # for k, v in embeddings_dict.items():
-    # print(v, k)
-    # print(f"{word}: {np.mean(embeddings_dict[word])}")
-    # distance = tf.reduce_sum(tf.abs(tf.subtract(v, all)), axis=2)
-    # distance = tf.reduce_sum(tf.abs(tf.subtract(v, tf.expand_dims(list(word_dict.curr()), 1))), axis=2)
-    # timerD(f"distances from {k}: {distance}")
-    # timerD(f"distances from {k}")
-
-    timerD("Total time taken", show_total_time_elapsed=True)
-    # Ensure expected folders are created
-    # init()
-    #
-    # # Loads et data
-    # et_dict = load_et_data()
-    #
-    # channel_indices = [3, 4, 13]
-    # eeg_dict = load_eeg_data(channel_indices)
-
-    # print_dict(eeg_dict)
-    # print_dict(et_dict)
+    timerD(f"Checking accuracy. Results (correct/total): {number_correct} / {len(predicted_analogies)} ({percent_correct}%)")
+    timerD(f"Exiting...", show_total_time_elapsed=True)
