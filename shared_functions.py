@@ -118,7 +118,7 @@ def cache_open_et(index, file_paths, in_dict):
         #  ['raw_comments', 'colheader', 'data', 'messages', 'eyeevent', 'event']
         keys = list(file.keys())[-6:]
 
-        #  Loads our six relevant values
+        #  Loads our six relevant curr
         raw_comments = file[keys[0]]
         colheader = file[keys[1]]
         data = file[keys[2]]
@@ -126,14 +126,14 @@ def cache_open_et(index, file_paths, in_dict):
         eyeevent = file[keys[4]]
         event = file[keys[5]]
 
-        #  Prepare all key and values
+        #  Prepare all key and curr
         raw_comments = process_text_array(raw_comments)
         colheader = process_text_array(colheader)
         data = data
         messages = process_text_array(messages)
         eyeevent = np.squeeze(eyeevent)
 
-        #  Prepare all key and values
+        #  Prepare all key and curr
         temp_dict = {}
         temp_dict['raw_comments'] = raw_comments
         temp_dict['colheader'] = colheader
