@@ -113,11 +113,11 @@ def prepare_embeddings_files(n=300, glove_size=6):
     new_folder = f"data/glove/{glove_size}B.{n}d"
     os.system(f"mkdir -p {new_folder}")
     vector_path = f"{new_folder}/glove.{glove_size}B.{n}d.vectors"
-    word_path = f"{new_folder}/glove.{glove_size}B.300d.words"
-    glove_path = f"{new_folder}/glove.{glove_size}B.300d.txt"
+    word_path = f"{new_folder}/glove.{glove_size}B.{n}d.words"
+    glove_path = f"{new_folder}/glove.{glove_size}B.{n}d.txt"
     # word_npy_path = f"{new_folder}/glove.{glove_size}B.{n}d.words.npy"
     vector_npy_path = f"{new_folder}/glove.{glove_size}B.{n}d.vectors.npy"
-    word_path_sorted = f"{new_folder}/glove.{glove_size}B.300d.words_sorted"
+    word_path_sorted = f"{new_folder}/glove.{glove_size}B.{n}d.words_sorted"
     vector_npy_path_sorted = f"{new_folder}/glove.{glove_size}B.{n}d.vectors_sorted.npy"
 
     # print(len(open(glove_path).readlines()))
@@ -148,7 +148,7 @@ def prepare_embeddings_files(n=300, glove_size=6):
 
     if not os.path.exists(vector_npy_path):
         vector_lines = open(vector_path).readlines()
-        vector_array = [[0.0 for __ in range(300)] for _ in range(len(vector_lines))]
+        vector_array = [[0.0 for __ in range(n)] for _ in range(len(vector_lines))]
         for index, line in enumerate(vector_lines):
             print(f"{index / len(vector_lines) * 100:2.1f}%", end='\r')
             vector_array[index] = np.array(line.split(), dtype=np.float32)[:]
@@ -167,7 +167,7 @@ def prepare_embeddings_files(n=300, glove_size=6):
         clean_b = []
         fW = open(word_path_sorted, "w")
         for index, (q, w) in enumerate(zip(a, b)):
-            if len(w) == 300:
+            if len(w) == n:
                 fW.write(f"{q}\n")
                 clean_b.append(b[index])
 
@@ -179,15 +179,15 @@ def load_embeddings(n=300, glove_size=6):
     new_folder = f"data/glove/{glove_size}B.{n}d"
     os.system(f"mkdir -p {new_folder}")
     vector_path = f"{new_folder}/glove.{glove_size}B.{n}d.vectors.npy"
-    word_path = f"{new_folder}/glove.{glove_size}B.300d.words.npy"
-    word_path = f"{new_folder}/glove.{glove_size}B.300d.words"
-    glove_path = f"{new_folder}/glove.{glove_size}B.300d.txt"
-    word_path_sorted = f"{new_folder}/glove.{glove_size}B.300d.words_sorted"
+    word_path = f"{new_folder}/glove.{glove_size}B.{n}d.words.npy"
+    word_path = f"{new_folder}/glove.{glove_size}B.{n}d.words"
+    glove_path = f"{new_folder}/glove.{glove_size}B.{n}d.txt"
+    word_path_sorted = f"{new_folder}/glove.{glove_size}B.{n}d.words_sorted"
     vector_npy_path_sorted = f"{new_folder}/glove.{glove_size}B.{n}d.vectors_sorted.npy"
 
     ###################################################################################################
     ###################################################################################################
-    if glove_size > 6:
+    if glove_size >= 6:
         prepare_embeddings_files(n=n, glove_size=glove_size)
     else:
         if not os.path.exists(vector_path) or not os.path.exists(word_path):
@@ -203,7 +203,7 @@ def load_embeddings(n=300, glove_size=6):
             a, b = zip(*sorted(((zip(a, b)))))
             word_array, vector_array = np.array(a), np.array(b)
 
-            fW = open(word_path, "w")
+            fW = open(word_path_sorted, "w")
             for word in word_array:
                 fW.write(f"{word}\n")
 
@@ -286,9 +286,9 @@ def convert_to_tensors(curr, dtype=tf.float32):
     return tf.convert_to_tensor(curr, dtype=dtype)
 
 
-def calculate_analogy_vectors(in_dict, vector_list, limit=None):
+def calculate_analogy_vectors(in_dict, vector_list, glove_size, n, limit=None):
     analogy_path = get_file(URL="https://raw.githubusercontent.com/nicholas-leonard/word2vec/master/questions-words.txt")
-    file_path = "data/float32_analogy_vectors.npy"
+    file_path = f"data/glove/{glove_size}B.{n}d/float32_analogy_vectors.npy"
 
     ###################################################################################################
     ###################################################################################################
@@ -297,6 +297,7 @@ def calculate_analogy_vectors(in_dict, vector_list, limit=None):
         file = [line for line in open(analogy_path).readlines() if len(line.split()) == 4]
         vectors = q_smp(get_index_vectors, zip(repeat(file), range(len(file)), repeat(in_dict)))
         np.save(file_path, np.array(vectors, dtype=np.float32), allow_pickle=True)
+        timerD("Creating float32_analogy_vectors.npy")
 
     ###################################################################################################
     ###################################################################################################
@@ -308,7 +309,7 @@ def calculate_analogy_vectors(in_dict, vector_list, limit=None):
     convert_to_tensors(vector_list)
     currT, bT = q_mp(convert_to_tensors, predicted_vectors), convert_to_tensors(vector_list)
 
-    timerD("Converting data to tensors")
+    # timerD("Converting data to tensors")
     tf_layer = AnalogyIndiceLayer()
     locs = list(map(lambda x: tf_layer((x, bT)).numpy(), currT))
 
@@ -346,64 +347,78 @@ if __name__ == '__main__':
 
     words = ["car", "automobile", "truck", "bus", "limo", "jeep", "boat", "canoe", "dinghy", "motorboat", "yacht", "catamaran"]
 
-    n, glove_size = 300, 6
+    n, glove_size = 50, 6
+    # n, glove_size = 100, 6
+    # n, glove_size = 200, 6
+    # n, glove_size = 300, 6
     # n, glove_size = 300, 42
     # n, glove_size = 300, 840
-    limit = None  # Reduces the amount of words done, for debugging. Set to None for the full dataset.
+    ns = [50, 100, 200]
+    for n in ns:
+        timerD(f"Running {glove_size}B.{n}d...")
+        limit = None  # Reduces the amount of words done, for debugging. Set to None for the full dataset.
 
-    # n, glove_size = 300, 6
-    # limit = 5
+        # n, glove_size = 300, 6
+        # limit = 5
 
-    word_list, vector_list, word_vector_dict = load_embeddings(n=n, glove_size=glove_size)
-    # print(word_list)
-    # exit()
+        word_list, vector_list, word_vector_dict = load_embeddings(n=n, glove_size=glove_size)
+        # print(*word_list,sep='\n')
+        # exit()
 
-    predicted_analogy_indices = calculate_analogy_vectors(word_vector_dict, vector_list, limit=limit)
-    timerD(f"Predicting analogy indices")
+        predicted_analogy_indices = calculate_analogy_vectors(word_vector_dict, vector_list, glove_size, n, limit=limit)
+        # timerD(f"Predicting analogy indices")
 
-    predicted_analogies = word_list[predicted_analogy_indices]
-    analogy_answers = get_analogy_answers()
-    timerD("Loading analogy answers")
+        predicted_analogies = word_list[predicted_analogy_indices]
+        analogy_answers = get_analogy_answers()
+        # timerD("Loading analogy answers")
 
-    args = zip(repeat(predicted_analogies), repeat(analogy_answers), range(len(predicted_analogies)))
-    true_if_correct = q_smp(score_if_same, args)
-    number_correct = np.sum(true_if_correct)
-    percent_correct = f"{number_correct / len(predicted_analogies) * 100:2.1f}"
-    timerD(f"Checking accuracy. Results (correct/total): {number_correct} / {len(predicted_analogies)} ({percent_correct}%)")
+        args = zip(repeat(predicted_analogies), repeat(analogy_answers), range(len(predicted_analogies)))
+        true_if_correct = q_smp(score_if_same, args)
+        number_correct = np.sum(true_if_correct)
+        percent_correct = f"{number_correct / len(predicted_analogies) * 100:2.1f}"
+        timerD(f"Checking accuracy. Results (correct/total): {number_correct} / {len(predicted_analogies)} ({percent_correct}%)")
 
-    analogies = open_analogy_file().readlines()
+        analogies = open_analogy_file().readlines()
 
-    categories = []
-    for idx, each in enumerate(analogies):
-        if len(each.split()) != 4:
-            category_name = each.split()[1]
-            categories.append([category_name, idx])
+        categories = []
+        for idx, each in enumerate(analogies):
+            if len(each.split()) != 4:
+                category_name = each.split()[1]
+                categories.append([category_name, idx])
 
-    categorized = []
-    for i in range(len(categories)):
-        if i < len(categories) - 1:
-            idx0, idx1 = categories[i][1], categories[i + 1][1]
-            t0, t1 = analogy_answers[idx0:idx1], predicted_analogies[idx0:idx1]
-        else:
-            idx0 = categories[i][1]
-            t0, t1 = analogy_answers[idx0:], predicted_analogies[idx0:]
+        categorized = []
+        for i in range(len(categories)):
+            if i < len(categories) - 1:
+                idx0, idx1 = categories[i][1], categories[i + 1][1]
+                t0, t1 = analogy_answers[idx0:idx1], predicted_analogies[idx0:idx1]
+            else:
+                idx0 = categories[i][1]
+                t0, t1 = analogy_answers[idx0:], predicted_analogies[idx0:]
 
-        args = zip(repeat(t0), repeat(t1), range(len(t0)))
-        number_correct = np.sum(q_smp(score_if_same, args))
-        percent_correct = f"{number_correct / len(t1) * 100:02.1f}"
-        category_name = categories[i][0]
-        print(f"{category_name:>30}, Accuracy: {percent_correct}% ({number_correct}/{len(t1)})")
+            args = zip(repeat(t0), repeat(t1), range(len(t0)))
+            number_correct = np.sum(q_smp(score_if_same, args))
+            percent_correct = f"{number_correct / len(t1) * 100:02.1f}"
+            category_name = categories[i][0]
+            print(f"{category_name:>30}, Accuracy: {percent_correct}% ({number_correct}/{len(t1)})")
 
-    # predictions_dir = f"data/predictions"
-    # os.system(f"mkdir -p {predictions_dir}")
-    # incorrect_predictions_path = f"{predictions_dir}/wrong_predictions-glove_{glove_size}-correct_{percent_correct}p.txt"
-    # with open(incorrect_predictions_path, 'w') as f:
-    #     for a, b, c in zip(predicted_analogies, analogy_answers, true_if_correct):
-    #         if not c:
-    #             pretty = f"{a:>20} | {b:<20}"
-    #             f.write(f"{pretty}\n")
-    #             # print(pretty)
+        start_indexes = list(map(lambda x: x[1], categories))
 
-    # timerD(f"Checking accuracy. Results (correct/total): {number_correct} / {len(predicted_analogies)} ({percent_correct}%)")
+        predictions_dir = f"data/predictions"
+        os.system(f"mkdir -p {predictions_dir}")
+        incorrect_predictions_path = f"{predictions_dir}/wrong_predictions-glove_{glove_size}B-{n}d-{percent_correct}_percent_correct.txt"
+        if not os.path.exists(incorrect_predictions_path):
+            lines_to_write = []
+            for index, (a, b, c) in enumerate(zip(predicted_analogies, analogy_answers, true_if_correct)):
+                for category in categories:
+                    if category[1] == index:
+                        cat = f"\n Errors in {category[0]}:"
+                        lines_to_write.append(f"{cat}\n")
+                        # print(cat)
+                if not c:
+                    pretty = f"{a:>20} | {b:<20}"
+                    lines_to_write.append(f"{pretty}\n")
+                    # print(pretty)
+
+            open(incorrect_predictions_path, 'w').writelines(lines_to_write)
 
     timerD(f"Exiting...", show_total_time_elapsed=True)
