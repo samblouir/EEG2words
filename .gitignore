@@ -6,7 +6,9 @@ tmp/
 tmp2/
 processed/
 et_processed/
+__pycache__
 __pycache__/
+__pycache__/*
 push.sh
 *.pyc
 *.csv
