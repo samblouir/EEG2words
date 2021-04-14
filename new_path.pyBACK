@@ -1,0 +1,123 @@
+
+
+from shared_functions import timerD
+from __main__ import data
+import os, random
+import numpy as np
+
+# dict_keys(['RAW_EEG', 'RAW_ET', 'FFD', 'GD', 'GPT', 'TRT', 'SFD', 'nFix', 'ALPHA_EEG', 'BETA_EEG', 'GAMMA_EEG', 'THETA_EEG'])
+
+# This runs safely in a new thread
+os.system("clear")
+
+print(f"len(data): {len(data)} \n ")
+
+x = random.randint(0, len(data))
+x_fmt = f"{x:4d}"
+
+
+min_val,max_val = 1,1
+min_val_w,max_val_w = "",""
+nFix_list = []
+for x in range(len(data)):
+# for x in range(len(data))[0:2]:
+    words = list(data.keys())
+    words.sort()
+    word = words[x]
+
+    # print(word)
+
+    # print(f"  data[word]:")
+    # for e in data[word]:
+    #     print(e.keys())
+    #     print(len(e))
+
+
+    # print(f"  data[{word}]:")
+
+    # print(f"  data[{word}][nFix]:")
+    # y = data[word]["nFix"]
+    # print(y)
+    sum = 0
+    for e in data[word]:
+        # y = e['nFix']
+        y = e['RAW_EEG']
+        # for a in y:
+        #     print(a)
+        if y is not None:
+            # print(len(y))
+            sum += len(y)
+            # print(len(y))
+        # print(e.keys())
+        # print(len(e))
+    # print(f"    sum: {sum}")
+
+    nFix_list.append( [int(sum), word] )
+    # if sum < min_val and sum < 0:
+    #     min_val = sum
+    #     min_val_w = word
+    # if sum > max_val:
+    #     max_val = sum
+    #     max_val_w = word
+
+
+# print(f"    min_val: {min_val} at \"{min_val_w}\"")
+# print(f"    max_val: {max_val} at {max_val_w}")
+print()
+nFix_list.sort()
+for each in nFix_list:
+    print(each)
+timerD(f"Finished printing \"{word}\".")
+
+
+
+
+# our_list = []
+# for k,v in d.items():
+#     if v == 2:
+#         our_list.append(k)
+#
+# for each in our_list: arr.remove(each)
+
+
+
+
+
+
+
+
+#
+# # long hand
+# d={}
+# for each in arr:
+#     if each not in d:
+#         d[each] = 0
+#     d[each] += 1
+#
+#
+#
+#
+# #short_hand:
+# for each in arr:
+#     d[each] = d.get(each, 0) + 1
+#
+#
+#
+#
+# #short_hand:
+# from collections import defaultdict
+# d = defaultdict(int)
+# for each in arr:
+#     d[each] += 1
+
+
+
+
+
+
+
+
+
+
+
+
